@@ -204,12 +204,32 @@ def get_user_input_features():
     meio_de_transporte = mapa_transporte[transporte_key]
 
     data = {
-        'idade': idade, 'genero': genero, 'qtd_refeicao': mapa_refeicoes[refeicao_key],
-        'qtd_vegetais': veg_key, 'qtd_agua': agua_key, 'qtd_atv_fisicas': 'Sedentario',
-        'qtd_tmp_na_internet': 'Uso_moderado', 'b_fuma': 1 if fuma == "Sim" else 0,
-        'b_come_alimentos_caloricos': 1 if caloricos == "Sim" else 0, 'b_monitora_calorias': 1 if monitora == "Sim" else 0,
-        'b_historico_familiar': 1 if historico == "Sim" else 0, 'freq_come_fora_refeicao': 'Sometimes',
-        'freq_alcool': 'no', 'meio_de_transporte': 'Public_Transportation', 'imc': imc
+        data = {
+    'idade': idade,
+    'genero': genero,
+    'imc': imc,
+
+    'qtd_refeicao': mapa_refeicoes[refeicao_key],
+    'qtd_vegetais': veg_key,
+    'qtd_agua': agua_key,
+
+    'qtd_atv_fisicas': qtd_atv_fisicas,
+    'qtd_tmp_na_internet': qtd_tmp_na_internet,
+    'meio_de_transporte': meio_de_transporte,
+
+    'b_fuma': 1 if fuma == "Sim" else 0,
+    'b_come_alimentos_caloricos': 1 if caloricos == "Sim" else 0,
+    'b_monitora_calorias': 1 if monitora == "Sim" else 0,
+    'b_historico_familiar': 1 if historico == "Sim" else 0,
+
+    'freq_come_fora_refeicao': fora_key.replace('Às vezes', 'Sometimes')
+                                           .replace('Frequentemente', 'Frequently')
+                                           .replace('Sempre', 'Always')
+                                           .replace('Não', 'no'),
+
+    'freq_alcool': 'no'
+}
+
     }
     return pd.DataFrame(data, index=[0])
 
