@@ -1,6 +1,6 @@
 import streamlit as st
 
-st.title('🍟 aalise de Risco de Obesidade')
+st.title('🍟 analise de Risco de Obesidade')
 
 st.write('Hello world!')
 
