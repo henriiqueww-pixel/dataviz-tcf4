@@ -118,7 +118,7 @@ def load_model():
 
     # Tentativa Local
     try:
-        return joblib.load('modelo_risco_obesidade_random_forest.joblib')
+        return joblib.load('risco_obesidade_random_forest.joblib')
     except FileNotFoundError:
         pass
 
