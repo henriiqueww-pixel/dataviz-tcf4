@@ -159,6 +159,50 @@ def get_user_input_features():
         agua_key = st.selectbox("Consumo de água?", options=['< 1 Litro', '1-2 Litros', '> 2 Litros'], index=1)
         fora_key = st.selectbox("Come entre as refeições?", options=['Não', 'Às vezes', 'Frequentemente', 'Sempre'], index=1)
 
+  # ESTILO DE VIDA
+    st.header("4. Estilo de Vida")
+
+    mapa_atv = {
+        'Sedentário': 'Sedentario', 
+        'Baixa': 'Baixa_frequencia', 
+        'Moderada': 'Moderada_frequencia', 
+        'Alta': 'Alta_frequencia'
+    }
+    mapa_net = {
+        'Baixo (0-2h)': 'Uso_baixo', 
+        'Moderado (3-5h)': 'Uso_moderado', 
+        'Intenso (>5h)': 'Uso_intenso'
+    }
+    mapa_transporte = {
+        'Transporte Público': 'Public_Transportation', 
+        'Caminhada': 'Walking', 
+        'Carro': 'Automobile', 
+        'Bicicleta': 'Bike', 
+        'Moto': 'Motorbike'
+    }
+
+    col_estilo1, col_estilo2 = st.columns(2)
+
+    with col_estilo1:
+        atv_key = st.selectbox(
+            "Frequência de atividade física?", 
+            options=list(mapa_atv.keys())
+        )
+        net_key = st.selectbox(
+            "Tempo diário em dispositivos eletrônicos?", 
+            options=list(mapa_net.keys())
+        )
+
+    with col_estilo2:
+        transporte_key = st.selectbox(
+            "Meio de transporte principal?", 
+            options=ordenar_opcoes(list(mapa_transporte.keys()))
+        )
+
+    qtd_atv_fisicas = mapa_atv[atv_key]
+    qtd_tmp_na_internet = mapa_net[net_key]
+    meio_de_transporte = mapa_transporte[transporte_key]
+
     data = {
         'idade': idade, 'genero': genero, 'qtd_refeicao': mapa_refeicoes[refeicao_key],
         'qtd_vegetais': veg_key, 'qtd_agua': agua_key, 'qtd_atv_fisicas': 'Sedentario',
