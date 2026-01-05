@@ -1,4 +1,4 @@
-# Importar biblioteca completa - padrão
+ # Importar biblioteca completa - padrão
 import io
 import unicodedata
 
