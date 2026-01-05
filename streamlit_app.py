@@ -127,41 +127,114 @@ def gerar_explicacao_shap(model, input_df):
     return plt.gcf(), df_mapeamento
 
 def get_user_input_features():
+       # DADOS PESSOAIS
     st.header("1. Dados Pessoais")
+    st.markdown("Inicie informando as características físicas básicas")
+    
     col1, col2 = st.columns(2)
+    
     with col1:
         idade = st.number_input("Idade", min_value=10, max_value=100, value=25)
         altura = st.number_input("Altura (m)", min_value=1.0, max_value=2.5, value=1.70)
+    
     with col2:
         genero_label = st.selectbox("Gênero", ordenar_opcoes(["Masculino", "Feminino"]))
         peso = st.number_input("Peso (kg)", min_value=30.0, max_value=200.0, value=70.0)
 
+    # Cálculo de IMC e Gênero
     imc = int(np.ceil(peso / (altura ** 2)))
     genero = 1 if genero_label == "Feminino" else 0
-    st.info(f"ℹ️ **IMC Calculado:** {imc} kg/m²")
+    
+    if imc < 18.5:
+        tabela_imc = 'Abaixo do peso'
 
+    elif imc >= 18.5 and imc <= 24.9:
+        tabela_imc = 'Peso normal'
+
+    elif imc >= 25.0 and imc <= 29.9:
+        tabela_imc = 'Sobrepeso'
+
+    elif imc >= 30.0 and imc <= 34.9:
+        tabela_imc = 'Obesidade grau I'
+
+    elif imc >= 35.0 and imc <= 39.9:
+        tabela_imc = 'Obesidade grau II'
+
+    else:
+        tabela_imc = 'Obesidade grau III'
+
+    st.info(f"ℹ️ **IMC Calculado:** {imc} kg/m² ({tabela_imc})")
+    st.markdown("---")
+
+    # HISTÓRICO E HÁBITOS
     st.header("2. Histórico e Monitoramento")
+    
     col_h1, col_h2 = st.columns(2)
+    
     with col_h1:
         historico = st.radio("Possui histórico familiar de sobrepeso?", ["Sim", "Não"], horizontal=True)
         fuma = st.radio("Você fuma?", ["Sim", "Não"], horizontal=True)
+    
     with col_h2:
         caloricos = st.radio("Consome alimentos calóricos frequentemente?", ["Sim", "Não"], horizontal=True)
         monitora = st.radio("Costuma monitorar as calorias ingeridas?", ["Sim", "Não"], horizontal=True)
 
-    st.header("3. Hábitos Alimentares")
-    mapa_refeicoes = {'1': 'Uma_refeicao_principal_por_dia', '2': 'Duas_refeicoes_principais_por_dia', '3': 'Tres_refeicoes_principais_por_dia', '4+': 'Quatro_ou_mais_refeicoes_principais_por_dia'}
-    col_alim1, col_alim2 = st.columns(2)
-    with col_alim1:
-        refeicao_key = st.selectbox("Refeições principais/dia?", options=['1', '2', '3', '4+'], index=2)
-        veg_key = st.selectbox("Frequência de vegetais?", options=['Raramente', 'Às vezes', 'Sempre'], index=1)
-    with col_alim2:
-        agua_key = st.selectbox("Consumo de água?", options=['< 1 Litro', '1-2 Litros', '> 2 Litros'], index=1)
-        fora_key = st.selectbox("Come entre as refeições?", options=['Não', 'Às vezes', 'Frequentemente', 'Sempre'], index=1)
-        alcool_key = st.selectbox("Consome bebidas alcoólicas?", options=['Não', 'Às vezes', 'Frequentemente', 'Sempre'], index=1)
+    b_historico_familiar = 1 if historico == "Sim" else 0
+    b_fuma = 1 if fuma == "Sim" else 0
+    b_come_alimentos_caloricos = 1 if caloricos == "Sim" else 0
+    b_monitora_calorias = 1 if monitora == "Sim" else 0
 
- 
-  # ESTILO DE VIDA
+    st.markdown("---")
+
+    # HÁBITOS ALIMENTARES
+    st.header("3. Hábitos Alimentares")
+
+    mapa_refeicoes = {
+        '1': 'Uma_refeicao_principal_por_dia',
+        '2': 'Duas_refeicoes_principais_por_dia',
+        '3': 'Tres_refeicoes_principais_por_dia',
+        '4+': 'Quatro_ou_mais_refeicoes_principais_por_dia'
+    }
+    mapa_vegetais = {'Raramente': 'Raramente', 'Às vezes': 'As_vezes', 'Sempre': 'Sempre'}
+    mapa_agua = {'< 1 Litro': 'Baixo_consumo', '1-2 Litros': 'Consumo_adequado', '> 2 Litros': 'Alto_consumo'}
+    mapa_fora_hora = {'Não': 'no', 'Às vezes': 'Sometimes', 'Frequentemente': 'Frequently', 'Sempre': 'Always'}
+    mapa_alcool = {'Não': 'no', 'Às vezes': 'Sometimes', 'Frequentemente': 'Frequently', 'Sempre': 'Always'}
+
+    col_alim1, col_alim2 = st.columns(2)
+
+    with col_alim1:
+        refeicao_key = st.selectbox(
+            "Quantas refeições principais faz por dia?", 
+            options=sorted(['1', '2', '3', '4+'])
+        )
+        veg_key = st.selectbox(
+            "Frequência de consumo de vegetais?", 
+            options=['Raramente', 'Às vezes', 'Sempre']
+        )
+        agua_key = st.selectbox(
+            "Consumo diário de água?", 
+            options=['< 1 Litro', '1-2 Litros', '> 2 Litros']
+        )
+
+    with col_alim2:
+        fora_key = st.selectbox(
+            "Costuma comer entre as refeições?", 
+            options=list(mapa_fora_hora.keys())
+        )
+        alcool_key = st.selectbox(
+            "Consome bebidas alcoólicas?", 
+            options=list(mapa_alcool.keys())
+        )
+
+    qtd_refeicao = mapa_refeicoes[refeicao_key]
+    qtd_vegetais = mapa_vegetais[veg_key]
+    qtd_agua = mapa_agua[agua_key]
+    freq_come_fora_refeicao = mapa_fora_hora[fora_key]
+    freq_alcool = mapa_alcool[alcool_key]
+
+    st.markdown("---")
+
+    # ESTILO DE VIDA
     st.header("4. Estilo de Vida")
 
     mapa_atv = {
@@ -206,13 +279,23 @@ def get_user_input_features():
     meio_de_transporte = mapa_transporte[transporte_key]
 
     data = {
-        'idade': idade, 'genero': genero, 'qtd_refeicao': mapa_refeicoes[refeicao_key],
-        'qtd_vegetais': veg_key, 'qtd_agua': agua_key, 'qtd_atv_fisicas': 'Sedentario',
-        'qtd_tmp_na_internet': 'Uso_moderado', 'b_fuma': 1 if fuma == "Sim" else 0,
-        'b_come_alimentos_caloricos': 1 if caloricos == "Sim" else 0, 'b_monitora_calorias': 1 if monitora == "Sim" else 0,
-        'b_historico_familiar': 1 if historico == "Sim" else 0, 'freq_come_fora_refeicao': 'Sometimes',
-        'freq_alcool': 'no', 'meio_de_transporte': 'Public_Transportation', 'imc': imc
+        'idade': idade,
+        'genero': genero,
+        'qtd_refeicao': qtd_refeicao,
+        'qtd_vegetais': qtd_vegetais,
+        'qtd_agua': qtd_agua,
+        'qtd_atv_fisicas': qtd_atv_fisicas,
+        'qtd_tmp_na_internet': qtd_tmp_na_internet,
+        'b_fuma': b_fuma,
+        'b_come_alimentos_caloricos': b_come_alimentos_caloricos,
+        'b_monitora_calorias': b_monitora_calorias,
+        'b_historico_familiar': b_historico_familiar,
+        'freq_come_fora_refeicao': freq_come_fora_refeicao,
+        'freq_alcool': freq_alcool,
+        'meio_de_transporte': meio_de_transporte,
+        'imc': imc
     }
+    
     return pd.DataFrame(data, index=[0])
 
 def main():
