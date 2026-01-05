@@ -123,7 +123,7 @@ def load_model():
         pass
 
     # Tentativa Remota (GitHub)
-    url_modelo = "https://github.com/RicardViana/fiap-data-viz-and-production-models-tc/raw/refs/heads/main/models/modelo_risco_obesidade_random_forest.joblib"
+    url_modelo = "https://github.com/henriiqueww-pixel/dataviz-tcf4/raw/refs/heads/master/Modelos/risco_obesidade_random_forest.joblib"
     
     try:
         response = requests.get(url_modelo)
