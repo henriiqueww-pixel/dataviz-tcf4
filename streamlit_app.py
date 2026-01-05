@@ -158,7 +158,13 @@ def get_user_input_features():
     with col_alim2:
         agua_key = st.selectbox("Consumo de água?", options=['< 1 Litro', '1-2 Litros', '> 2 Litros'], index=1)
         fora_key = st.selectbox("Come entre as refeições?", options=['Não', 'Às vezes', 'Frequentemente', 'Sempre'], index=1)
+     
+     alcool_key = st.selectbox(
+            "Consome bebidas alcoólicas?", 
+            options=list(mapa_alcool.keys())
+        )
 
+ 
   # ESTILO DE VIDA
     st.header("4. Estilo de Vida")
 
