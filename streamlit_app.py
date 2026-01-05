@@ -11,7 +11,7 @@ import requests
 import shap
 import streamlit as st
 
-st.title('🍟 anaalise de Risco de Obesidade')
+st.title('🍟 analise de Risco de Obesidade')
 
 st.info('Este aplicativo visa evidenciar as situações de risco analisadas de acordo com o banco de dados!')
 
@@ -108,4 +108,32 @@ def traduzir_nomes_features(lista_nomes_tecnicos):
         
 # Salvar o modelo em cache
 @st.cache_resource 
+
+# Carregar o modelo
+def load_model():
+
+    """
+    Carrega o modelo treinado (.joblib) localmente ou via GitHub
+    """
+
+    # Tentativa Local
+    try:
+        return joblib.load('modelo_risco_obesidade_random_forest.joblib')
+    except FileNotFoundError:
+        pass
+
+    # Tentativa Remota (GitHub)
+    url_modelo = "https://github.com/RicardViana/fiap-data-viz-and-production-models-tc/raw/refs/heads/main/models/modelo_risco_obesidade_random_forest.joblib"
+    
+    try:
+        response = requests.get(url_modelo)
+        if response.status_code == 200:
+            return joblib.load(io.BytesIO(response.content))
+    except Exception:
+        pass
+    
+    return None
+
+# Criar e cachear o SHAPE
+@st.cache_resource
 
