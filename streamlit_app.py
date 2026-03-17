@@ -5,17 +5,48 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import streamlit as st
+from pathlib import Path
 
-st.set_page_config(page_title="Análise de Risco Educacional", layout="wide")
+st.set_page_config(page_title="Plataforma de Risco Educacional", layout="wide")
+
 
 # ---------------------------------------------------
-# CARREGAR MODELO
+# LOCALIZAR ARQUIVO DO MODELO
+# ---------------------------------------------------
+
+def localizar_modelo():
+
+    caminhos = [
+        "modelo_passos_magicos.pkl",
+        "modelo_passos_magicos.joblib",
+        "Modelos/modelo_passos_magicos.pkl",
+        "Modelos/modelo_passos_magicos.joblib",
+        "data/modelo_passos_magicos.pkl",
+        "data/modelo_passos_magicos.joblib"
+    ]
+
+    for caminho in caminhos:
+
+        if Path(caminho).exists():
+            return caminho
+
+    raise FileNotFoundError(
+        "Arquivo do modelo não encontrado no repositório."
+    )
+
+
+# ---------------------------------------------------
+# CARREGAR MODELO COM JOBLIB
 # ---------------------------------------------------
 
 @st.cache_resource
 def carregar_modelo():
-    model = joblib.load("modelo_passos_magicos.pkl")
-    return model
+
+    caminho = localizar_modelo()
+
+    modelo = joblib.load(caminho)
+
+    return modelo
 
 
 # ---------------------------------------------------
@@ -41,10 +72,10 @@ def extrair_fase(valor):
 
 
 # ---------------------------------------------------
-# PREPARAÇÃO DA BASE
+# PREPARAÇÃO DOS DADOS
 # ---------------------------------------------------
 
-def preparar_base_app(df):
+def preparar_base(df):
 
     df = df.copy()
 
@@ -68,7 +99,7 @@ def garantir_colunas_modelo(df, model):
     try:
         colunas_modelo = list(model.feature_names_in_)
     except:
-        colunas_modelo = list(df.columns)
+        return df
 
     for c in colunas_modelo:
 
@@ -81,7 +112,7 @@ def garantir_colunas_modelo(df, model):
 
 
 # ---------------------------------------------------
-# SHAP EXPLAINER
+# SHAP
 # ---------------------------------------------------
 
 @st.cache_resource
@@ -94,10 +125,6 @@ def shap_explainer(_model):
 
     return shap.TreeExplainer(modelo)
 
-
-# ---------------------------------------------------
-# GRAFICO SHAP
-# ---------------------------------------------------
 
 def grafico_shap(model, df):
 
@@ -127,9 +154,8 @@ def grafico_shap(model, df):
         plt.text(
             0.5,
             0.5,
-            "SHAP não disponível para este modelo",
-            ha="center",
-            va="center"
+            "Explicação SHAP não disponível",
+            ha="center"
         )
 
         plt.axis("off")
@@ -138,16 +164,16 @@ def grafico_shap(model, df):
 
 
 # ---------------------------------------------------
-# INTERPRETAÇÃO
+# INTERPRETAÇÃO DO RISCO
 # ---------------------------------------------------
 
 def interpretar_risco(prob):
 
     if prob < 0.30:
-        return "🟢 Baixo risco", "Aluno com trajetória educacional estável."
+        return "🟢 Baixo risco", "Aluno apresenta trajetória educacional estável."
 
     if prob < 0.60:
-        return "🟡 Atenção", "Aluno pode apresentar risco educacional."
+        return "🟡 Atenção", "Aluno pode apresentar dificuldades educacionais."
 
     return "🔴 Alto risco", "Aluno com forte probabilidade de defasagem."
 
@@ -170,7 +196,7 @@ def grafico_risco(prob):
 
 
 # ---------------------------------------------------
-# INPUT USUÁRIO
+# INPUT DO USUÁRIO
 # ---------------------------------------------------
 
 def input_usuario():
@@ -203,7 +229,7 @@ def input_usuario():
 
     n_av = st.sidebar.number_input("Número de avaliações", 0, 20, 5)
 
-    data = {
+    dados = {
 
         "idade": idade,
         "genero": genero,
@@ -227,7 +253,7 @@ def input_usuario():
         "n_av": n_av
     }
 
-    return pd.DataFrame(data, index=[0])
+    return pd.DataFrame(dados, index=[0])
 
 
 # ---------------------------------------------------
@@ -244,7 +270,7 @@ def main():
 
     if st.button("Analisar aluno"):
 
-        df = preparar_base_app(df)
+        df = preparar_base(df)
 
         df = garantir_colunas_modelo(df, model)
 
