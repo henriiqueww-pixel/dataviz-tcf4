@@ -1,442 +1,401 @@
-# Importar biblioteca completa - padrão
+# Importar bibliotecas padrão
 import io
+import re
 import unicodedata
+import os
+import datetime
 
-# Importar biblioteca completa - terceiro
+# Importar bibliotecas de terceiros
 import joblib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import requests
 import shap
 import streamlit as st
 
-st.set_page_config(page_title="Análise de Risco de Obesidade", layout="wide")
+# Variável de debug
+validar_shap = 'n'
 
-st.title('🍟 Análise de Risco de Obesidade')
-st.info('Este aplicativo visa evidenciar as situações de risco analisadas de acordo com o banco de dados!')
+# Configuração da página
+st.set_page_config(
+    page_title="Predição de Risco de Defasagem",
+    page_icon="🎓",
+    layout="centered",
+    initial_sidebar_state="collapsed"
+)
 
-def ordenar_opcoes(lista):
-    """Ordena uma lista de strings ignorando acentos e maiúsculas"""
-    def normalizar(texto):
-        if isinstance(texto, str):
-            return unicodedata.normalize('NFKD', texto).encode('ASCII', 'ignore').decode('utf-8').lower()
-        return str(texto)
-    return sorted(lista, key=normalizar)
+# Funções de preparo de dados
+def coerce_numeric(s):
+    return pd.to_numeric(s, errors="coerce")
 
+def extrair_fase(valor):
+    if pd.isna(valor):
+        return np.nan
+    
+    valor = str(valor).lower()
+
+    if "alfa" in valor:
+        return 0
+    
+    m = re.search(r"fase\s*(\d+)", valor)
+
+    if m:
+        return int(m.group(1))
+    return np.nan
+
+def padronizar_genero(df):
+    df = df.copy()
+    if "genero" in df.columns:
+        df["genero"] = df["genero"].astype(str).str.strip().str.lower()
+        map_genero = {
+            "menino": "masculino", "masculino": "masculino",
+            "menina": "feminino", "feminino": "feminino"
+        }
+        df["genero"] = df["genero"].map(map_genero)
+
+    return df
+
+def padronizar_idade(df):
+    df = df.copy()
+    if "idade" not in df.columns:
+        return df
+    
+    s = df["idade"]
+    dt = pd.to_datetime(s, errors="coerce")
+    idade_from_date = np.where(dt.notna() & (dt.dt.year == 1900) & (dt.dt.month == 1), dt.dt.day, np.nan)
+    idade_num = pd.to_numeric(s, errors="coerce")
+    idade_final = pd.Series(idade_num, index=df.index)
+    mask = idade_final.isna() & ~pd.isna(idade_from_date)
+    idade_final.loc[mask] = idade_from_date[mask]
+    idade_final = idade_final.where(idade_final.between(6, 30))
+    df["idade"] = idade_final.round()
+
+    return df
+
+def tratar_inde_2024(df):
+    df = df.copy()
+    if "inde_2024" in df.columns:
+        tmp = df["inde_2024"].astype(str).str.strip().str.upper()
+        tmp = tmp.replace("INCLUIR", np.nan)
+        df["inde_2024"] = coerce_numeric(tmp)
+
+    return df
+
+def preparar_base_app(df):
+    df = df.copy()
+    df = padronizar_genero(df)
+    df = padronizar_idade(df)
+    df = tratar_inde_2024(df)
+
+    if "fase_ideal" in df.columns:
+        df["fase_ideal"] = df["fase_ideal"].apply(extrair_fase)
+
+    cols_acad = [c for c in ["mat","por","ing"] if c in df.columns]
+    if len(cols_acad) >= 2:
+        df["media_academica"] = df[cols_acad].mean(axis=1)
+
+    cols_comp = [c for c in ["iaa","ieg","ips","ipp"] if c in df.columns]
+    if len(cols_comp) >= 2:
+        df["media_comportamental"] = df[cols_comp].mean(axis=1)
+
+    if ("inde_2022" in df.columns) and ("inde_2023" in df.columns):
+        df["delta_inde"] = df["inde_2023"] - df["inde_2022"]
+
+    return df
+
+# Definição de funções do app
 def traduzir_nomes_features(lista_nomes_tecnicos):
+
     """Traduz os nomes técnicos do Pipeline para Português legível."""
+
     mapa_nomes = {
-        'num__imc': 'Índice de Massa Corporal (IMC)',
-        'num__idade': 'Idade',
-        'bin__genero': 'Gênero',
-        'bin__b_historico_familiar': 'Histórico Familiar',
-        'bin__b_fuma': 'Hábito de Fumar',
-        'bin__b_come_alimentos_caloricos': 'Consumo de Calóricos',
-        'bin__b_monitora_calorias': 'Monitoramento de Calorias',
-        'cat__freq_come_fora_refeicao_no': 'Comer entre refeições (Nunca)',
-        'cat__freq_come_fora_refeicao_Sometimes': 'Comer entre refeições (Às vezes)',
-        'cat__freq_come_fora_refeicao_Frequently': 'Comer entre refeições (Frequentemente)',
-        'cat__freq_come_fora_refeicao_Always': 'Comer entre refeições (Sempre)',
-        'cat__qtd_atv_fisicas_Sedentario': 'Sedentarismo',
-        'cat__qtd_atv_fisicas_Baixa_frequencia': 'Baixa Atividade Física',
-        'cat__qtd_atv_fisicas_Moderada_frequencia': 'Atividade Física Moderada',
-        'cat__qtd_atv_fisicas_Alta_frequencia': 'Alta Atividade Física',
-        'cat__qtd_agua_Baixo_consumo': 'Baixo consumo de água',
-        'cat__qtd_agua_Consumo_adequado': 'Consumo de água (Adequado)',
-        'cat__qtd_agua_Alto_consumo': 'Alto consumo de água',
-        'cat__meio_de_transporte_Automobile': 'Uso de Carro',
-        'cat__meio_de_transporte_Public_Transportation': 'Transporte Público',
-        'cat__meio_de_transporte_Motorbike': 'Uso de Moto',
-        'cat__meio_de_transporte_Bike': 'Uso de Bicicleta',
-        'cat__meio_de_transporte_Walking': 'Caminhada',
-        'cat__qtd_refeicao_Tres_refeicoes_principais_por_dia': '3 Refeições principais/dia',
-        'cat__qtd_refeicao_Duas_refeicoes_principais_por_dia': '2 Refeições principais/dia',
-        'cat__qtd_refeicao_Uma_refeicao_principal_por_dia': '1 Refeição principal/dia',
-        'cat__qtd_refeicao_Quatro_ou_mais_refeicoes_principais_por_dia': '4+ Refeições principais/dia',
-        'cat__qtd_vegetais_Sempre': 'Consumo de Vegetais (Sempre)',
-        'cat__qtd_vegetais_As_vezes': 'Consumo de Vegetais (Às vezes)',
-        'cat__qtd_vegetais_Raramente': 'Consumo de Vegetais (Raramente)',
-        'cat__qtd_tmp_na_internet_Uso_baixo': 'Tempo em Telas (Baixo)',
-        'cat__qtd_tmp_na_internet_Uso_moderado': 'Tempo em Telas (Moderado)',
-        'cat__qtd_tmp_na_internet_Uso_intenso': 'Tempo em Telas (Intenso)',
-        'cat__freq_alcool_no': 'Consumo de Álcool (Não)',
-        'cat__freq_alcool_Sometimes': 'Consumo de Álcool (Às vezes)',
-        'cat__freq_alcool_Frequently': 'Consumo de Álcool (Frequentemente)',
-        'cat__freq_alcool_Always': 'Consumo de Álcool (Sempre)'
+        'num__idade': 'Idade do Aluno',
+        'num__inde_2024': 'Índice INDE (Atual)',
+        'num__media_academica': 'Média Acadêmica (Mat, Por, Ing)',
+        'num__media_comportamental': 'Média Comportamental (IAA, IEG, IPS, IPP)',
+        'num__delta_inde': 'Evolução do INDE (Últimos 2 anos)',
+        'num__fase_ideal': 'Fase Ideal',
+        'cat__genero_masculino': 'Gênero (Masculino)',
+        'cat__genero_feminino': 'Gênero (Feminino)',
+        'num__ida': 'Indicador de Desemp. Acad. (IDA)',
+        'num__ipv': 'Indicador de Ponto de Virada (IPV)',
+        'num__n_av': 'Número de Avaliações'
     }
     
     nomes_traduzidos = []
+
     for nome in lista_nomes_tecnicos:
         if nome in mapa_nomes:
             nomes_traduzidos.append(mapa_nomes[nome])
+
         else:
             limpo = nome.replace('num__', '').replace('cat__', '').replace('bin__', '').replace('_', ' ').title()
             nomes_traduzidos.append(limpo)
+            
     return nomes_traduzidos
 
-@st.cache_resource
-def load_model():
-    """Carrega o modelo treinado localmente ou via GitHub"""
+@st.cache_resource 
+def load_models_and_config():
+
+    """Carrega o modelo treinado e o arquivo de configuração usando caminhos relativos."""
+    
+    caminho_modelo = os.path.join("models", "modelo_passos_magicos.pkl")
+    caminho_config = os.path.join("models", "config_passos_magicos.pkl")
+    
     try:
-        return joblib.load('risco_obesidade_random_forest.joblib')
+        modelo = joblib.load(caminho_modelo)
+        config = joblib.load(caminho_config)
+        return modelo, config
+        
     except FileNotFoundError:
-        url_modelo = "https://github.com/henriiqueww-pixel/dataviz-tcf4/raw/refs/heads/master/Modelos/risco_obesidade_random_forest.joblib"
-        try:
-            response = requests.get(url_modelo)
-            if response.status_code == 200:
-                return joblib.load(io.BytesIO(response.content))
-        except Exception:
-            return None
-    return None
+        st.error(f"Arquivos não encontrados. Certifique-se de que a pasta 'models' existe junto ao app.py e contém os arquivos .pkl.")
+        return None, None
 
 @st.cache_resource
 def _get_shap_explainer(_classifier):
-    """Cria e cacheia o explicador do SHAP."""
     return shap.TreeExplainer(_classifier)
 
 def configurar_sidebar():
     with st.sidebar:
         st.header("📌 Sobre o Projeto")
-        st.info("""
-            Este aplicativo foi desenvolvido para o **Tech Challenge** da **Fase 4**.
-            🎓 **Curso:** Pós-Graduação em Data Analytics  
-            🏫 **Instituição:** FIAP + Alura
-            """)
+        st.info(
+            """
+            Aplicativo desenvolvido para o **Datathon FIAP - Fase 5** para prevê o risco de defasagem de alunos da ONG Passos Mágicos.
+            """
+        )
+        st.markdown("---")
 
-def gerar_explicacao_shap(model, input_df):
-    preprocessor = model.named_steps['preprocess']
-    classifier = model.named_steps['clf']
-    input_transformed = preprocessor.transform(input_df)
-    feature_names_raw = preprocessor.get_feature_names_out()
-    feature_names_pt = traduzir_nomes_features(feature_names_raw)
+        st.subheader("👨‍💻 Equipe de Desenvolvimento")
+        
+        membros = [
+            {"nome": "Elton José Araujo Silva", "link": "https://www.linkedin.com/in/elton-araujo-silva/"},
+            {"nome": "Leonardo Fajoli Formigon", "link": "https://www.linkedin.com/in/leonardo-formigon-63052320b/"}, 
+            {"nome": "Lucas Augusto Fernandes de Lira", "link": "https://www.linkedin.com/in/lucas--lira-/"},
+            {"nome": "Mariana Domingues Brandão", "link": "https://www.linkedin.com/in/maridbrandao"},
+            {"nome": "Ricardo Vieira Viana", "link": "https://www.linkedin.com/in/ricardvviana"}
 
-    df_mapeamento = pd.DataFrame({
-        'Nome Técnico (Raw)': feature_names_raw,
-        'Nome Traduzido': feature_names_pt,  
-        'Valor Inputado': input_transformed[0]
-    })
+        ]
 
-    explainer = _get_shap_explainer(classifier)
-    shap_values = explainer(input_transformed)
-    shap_values.feature_names = feature_names_pt
+        for membro in membros:
+            st.markdown(f"• [{membro['nome']}]({membro['link']})")
+            
+        st.markdown("---")
+        
+        st.subheader("📂 Código Fonte")
+        st.markdown("Acesse o repositório completo do projeto:")
+        st.link_button("🔗 Ver no GitHub", "https://github.com/RicardViana/fiap-fase5-datathon")
 
-    fig, ax = plt.subplots(figsize=(10, 6))
-    shap.plots.waterfall(shap_values[0, :, 1], show=False, max_display=10)
+def gerar_explicacao_shap(model, input_df_processed):
+
+    """Gera o gráfico SHAP Waterfall."""
     
-    return plt.gcf(), df_mapeamento
+    try:
+        preprocessor = model.named_steps['prep']
+        classifier = model.named_steps['model']
+
+        nome_modelo = type(classifier).__name__
+        if nome_modelo == 'LogisticRegression':
+            st.info("ℹ️ O gráfico detalhado de explicabilidade (SHAP) é exclusivo para modelos baseados em Árvores de Decisão. O modelo atual em uso é uma Regressão Logística.")
+            return None, None
+
+        input_transformed = preprocessor.transform(input_df_processed)
+        feature_names_raw = preprocessor.get_feature_names_out()
+        feature_names_pt = traduzir_nomes_features(feature_names_raw)
+
+        df_mapeamento = pd.DataFrame({
+            'Nome Técnico': feature_names_raw,
+            'Nome Traduzido': feature_names_pt,  
+            'Valor Inputado': input_transformed[0]
+        })
+
+        explainer = _get_shap_explainer(classifier)
+        shap_values = explainer(input_transformed)
+
+        if len(shap_values.shape) == 3:
+            shap_values_to_plot = shap_values[0, :, 1] 
+        else:
+            shap_values_to_plot = shap_values[0]
+
+        shap_values_to_plot.feature_names = feature_names_pt
+
+        fig, ax = plt.subplots(figsize=(10, 6))
+        shap.plots.waterfall(shap_values_to_plot, show=False, max_display=10)
+        
+        return plt.gcf(), df_mapeamento
+    
+    except Exception as e:
+        st.error(f"Erro ao gerar explicabilidade SHAP: {e}")
+        return None, None
 
 def get_user_input_features():
-   # DADOS PESSOAIS
-    st.header("1. Dados Pessoais")
-    st.markdown("Inicie informando as características físicas básicas")
-    
-    col1, col2 = st.columns(2)
-    
+
+    """Coleta os dados do usuário"""
+
+    st.header("1. Dados do Aluno")
+    col1, col2, col3 = st.columns(3)
     with col1:
-        idade = st.number_input("Idade", min_value=10, max_value=100, value=25)
-        altura = st.number_input("Altura (m)", min_value=1.0, max_value=2.5, value=1.70)
-    
+        idade = st.number_input("Idade", min_value=6, max_value=30, value=12)
+
     with col2:
-        genero_label = st.selectbox("Gênero", ordenar_opcoes(["Masculino", "Feminino"]))
-        peso = st.number_input("Peso (kg)", min_value=30.0, max_value=200.0, value=70.0)
+        genero = st.selectbox("Gênero", ["Menino", "Menina"])
 
-    # Cálculo de IMC e Gênero
-    imc = int(np.ceil(peso / (altura ** 2)))
-    genero = 1 if genero_label == "Feminino" else 0
-    
-    if imc < 18.5:
-        tabela_imc = 'Abaixo do peso'
+    with col3:
+        fase = st.selectbox("Fase Ideal", ["Alfa", "Fase 1", "Fase 2", "Fase 3", "Fase 4", "Fase 5", "Fase 6", "Fase 7", "Fase 8"])
 
-    elif imc >= 18.5 and imc <= 24.9:
-        tabela_imc = 'Peso normal'
+    st.markdown("---")
+    st.header("2. Notas Acadêmicas")
+    st.write("Deixe em branco caso o aluno não possua a nota.")
+    col_n1, col_n2, col_n3 = st.columns(3)
+    with col_n1:
+        mat = st.number_input("Matemática (MAT)", min_value=0.0, max_value=10.0, value=None, step=0.1, format="%0.4f")
 
-    elif imc >= 25.0 and imc <= 29.9:
-        tabela_imc = 'Sobrepeso'
+    with col_n2:
+        por = st.number_input("Português (POR)", min_value=0.0, max_value=10.0, value=None, step=0.1, format="%0.4f")
 
-    elif imc >= 30.0 and imc <= 34.9:
-        tabela_imc = 'Obesidade grau I'
+    with col_n3:
+        ing = st.number_input("Inglês (ING)", min_value=0.0, max_value=10.0, value=None, step=0.1, format="%0.4f")
 
-    elif imc >= 35.0 and imc <= 39.9:
-        tabela_imc = 'Obesidade grau II'
+    st.markdown("---")
+    st.header("3. Indicadores (Comportamental e Geral)")
+    col_i1, col_i2 = st.columns(2)
+    with col_i1:
+        iaa = st.number_input("Ind. Autoavaliação (IAA)", min_value=0.0, max_value=10.0, value=None, format="%0.4f")
+        ieg = st.number_input("Ind. Engajamento (IEG)", min_value=0.0, max_value=10.0, value=None, format="%0.4f")
+        inde_2024 = st.number_input("INDE Atual", min_value=0.0, max_value=10.0, value=None, format="%0.4f")
+
+    with col_i2:
+        ips = st.number_input("Ind. Psicossocial (IPS)", min_value=0.0, max_value=10.0, value=None, format="%0.4f")
+        ipp = st.number_input("Ind. Psicopedagógico (IPP)", min_value=0.0, max_value=10.0, value=None, format="%0.4f")
+        
+    with st.expander("Histórico de INDE (Opcional - para calcular evolução)"):
+        col_h1, col_h2 = st.columns(2)
+        with col_h1:
+            inde_2022 = st.number_input("INDE de 2 anos atrás", min_value=0.0, max_value=10.0, value=None, format="%0.4f")
+        with col_h2:
+            inde_2023 = st.number_input("INDE do ano passado", min_value=0.0, max_value=10.0, value=None, format="%0.4f")
+
+    st.markdown("---")
+    st.header("4. Indicadores Avançados")
+    st.write("O IDA será calculado automaticamente com base nas notas, a menos que você digite um valor específico abaixo.")
+    with st.expander("Preencha se possuir os dados (Importante para a precisão)"):
+        col_adv1, col_adv2, col_adv3 = st.columns(3)
+        with col_adv1:
+            ida = st.number_input("Ind. Desemp. Acad. (IDA)", min_value=0.0, max_value=10.0, value=None, format="%0.4f")
+
+        with col_adv2:
+            ipv = st.number_input("Ponto de Virada (IPV)", min_value=0.0, max_value=10.0, value=None, format="%0.4f")
+
+        with col_adv3:
+            n_av = st.number_input("Nº de Avaliações", min_value=0, max_value=50, value=None, step=1)
+
+    if ida is not None:
+        ida_final = ida
+
+    elif mat is not None and por is not None and ing is not None:
+        ida_final = (mat + por + ing) / 3
 
     else:
-        tabela_imc = 'Obesidade grau III'
-
-    st.info(f"ℹ️ **IMC Calculado:** {imc} kg/m² ({tabela_imc})")
-    st.markdown("---")
-
-    # HISTÓRICO E HÁBITOS
-    st.header("2. Histórico e Monitoramento")
-    
-    col_h1, col_h2 = st.columns(2)
-    
-    with col_h1:
-        historico = st.radio("Possui histórico familiar de sobrepeso?", ["Sim", "Não"], horizontal=True)
-        fuma = st.radio("Você fuma?", ["Sim", "Não"], horizontal=True)
-    
-    with col_h2:
-        caloricos = st.radio("Consome alimentos calóricos frequentemente?", ["Sim", "Não"], horizontal=True)
-        monitora = st.radio("Costuma monitorar as calorias ingeridas?", ["Sim", "Não"], horizontal=True)
-
-    b_historico_familiar = 1 if historico == "Sim" else 0
-    b_fuma = 1 if fuma == "Sim" else 0
-    b_come_alimentos_caloricos = 1 if caloricos == "Sim" else 0
-    b_monitora_calorias = 1 if monitora == "Sim" else 0
-
-    st.markdown("---")
-
-    # HÁBITOS ALIMENTARES
-    st.header("3. Hábitos Alimentares")
-
-    mapa_refeicoes = {
-        '1': 'Uma_refeicao_principal_por_dia',
-        '2': 'Duas_refeicoes_principais_por_dia',
-        '3': 'Tres_refeicoes_principais_por_dia',
-        '4+': 'Quatro_ou_mais_refeicoes_principais_por_dia'
-    }
-    mapa_vegetais = {'Raramente': 'Raramente', 'Às vezes': 'As_vezes', 'Sempre': 'Sempre'}
-    mapa_agua = {'< 1 Litro': 'Baixo_consumo', '1-2 Litros': 'Consumo_adequado', '> 2 Litros': 'Alto_consumo'}
-    mapa_fora_hora = {'Não': 'no', 'Às vezes': 'Sometimes', 'Frequentemente': 'Frequently', 'Sempre': 'Always'}
-    mapa_alcool = {'Não': 'no', 'Às vezes': 'Sometimes', 'Frequentemente': 'Frequently', 'Sempre': 'Always'}
-
-    col_alim1, col_alim2 = st.columns(2)
-
-    with col_alim1:
-        refeicao_key = st.selectbox(
-            "Quantas refeições principais faz por dia?", 
-            options=sorted(['1', '2', '3', '4+'])
-        )
-        veg_key = st.selectbox(
-            "Frequência de consumo de vegetais?", 
-            options=['Raramente', 'Às vezes', 'Sempre']
-        )
-        agua_key = st.selectbox(
-            "Consumo diário de água?", 
-            options=['< 1 Litro', '1-2 Litros', '> 2 Litros']
-        )
-
-    with col_alim2:
-        fora_key = st.selectbox(
-            "Costuma comer entre as refeições?", 
-            options=list(mapa_fora_hora.keys())
-        )
-        alcool_key = st.selectbox(
-            "Consome bebidas alcoólicas?", 
-            options=list(mapa_alcool.keys())
-        )
-
-    qtd_refeicao = mapa_refeicoes[refeicao_key]
-    qtd_vegetais = mapa_vegetais[veg_key]
-    qtd_agua = mapa_agua[agua_key]
-    freq_come_fora_refeicao = mapa_fora_hora[fora_key]
-    freq_alcool = mapa_alcool[alcool_key]
-
-    st.markdown("---")
-
-    # ESTILO DE VIDA
-    st.header("4. Estilo de Vida")
-
-    mapa_atv = {
-        'Sedentário': 'Sedentario', 
-        'Baixa': 'Baixa_frequencia', 
-        'Moderada': 'Moderada_frequencia', 
-        'Alta': 'Alta_frequencia'
-    }
-    mapa_net = {
-        'Baixo (0-2h)': 'Uso_baixo', 
-        'Moderado (3-5h)': 'Uso_moderado', 
-        'Intenso (>5h)': 'Uso_intenso'
-    }
-    mapa_transporte = {
-        'Transporte Público': 'Public_Transportation', 
-        'Caminhada': 'Walking', 
-        'Carro': 'Automobile', 
-        'Bicicleta': 'Bike', 
-        'Moto': 'Motorbike'
-    }
-
-    col_estilo1, col_estilo2 = st.columns(2)
-
-    with col_estilo1:
-        atv_key = st.selectbox(
-            "Frequência de atividade física?", 
-            options=list(mapa_atv.keys())
-        )
-        net_key = st.selectbox(
-            "Tempo diário em dispositivos eletrônicos?", 
-            options=list(mapa_net.keys())
-        )
-
-    with col_estilo2:
-        transporte_key = st.selectbox(
-            "Meio de transporte principal?", 
-            options=ordenar_opcoes(list(mapa_transporte.keys()))
-        )
-
-    qtd_atv_fisicas = mapa_atv[atv_key]
-    qtd_tmp_na_internet = mapa_net[net_key]
-    meio_de_transporte = mapa_transporte[transporte_key]
+        ida_final = np.nan
 
     data = {
         'idade': idade,
         'genero': genero,
-        'qtd_refeicao': qtd_refeicao,
-        'qtd_vegetais': qtd_vegetais,
-        'qtd_agua': qtd_agua,
-        'qtd_atv_fisicas': qtd_atv_fisicas,
-        'qtd_tmp_na_internet': qtd_tmp_na_internet,
-        'b_fuma': b_fuma,
-        'b_come_alimentos_caloricos': b_come_alimentos_caloricos,
-        'b_monitora_calorias': b_monitora_calorias,
-        'b_historico_familiar': b_historico_familiar,
-        'freq_come_fora_refeicao': freq_come_fora_refeicao,
-        'freq_alcool': freq_alcool,
-        'meio_de_transporte': meio_de_transporte,
-        'imc': imc
+        'fase_ideal': fase,
+        'mat': mat if mat is not None else np.nan,
+        'por': por if por is not None else np.nan,
+        'ing': ing if ing is not None else np.nan,
+        'iaa': iaa if iaa is not None else np.nan,
+        'ieg': ieg if ieg is not None else np.nan,
+        'ips': ips if ips is not None else np.nan,
+        'ipp': ipp if ipp is not None else np.nan,
+        'inde_2022': inde_2022 if inde_2022 is not None else np.nan,
+        'inde_2023': inde_2023 if inde_2023 is not None else np.nan,
+        'inde_2024': str(inde_2024) if inde_2024 is not None else np.nan,
+        'ida': ida_final, 
+        'ipv': ipv if ipv is not None else np.nan,
+        'n_av': n_av if n_av is not None else np.nan,
     }
     
     return pd.DataFrame(data, index=[0])
 
-def exibir_importancia_variaveis(model):
-
-    """
-    Extrai, formata e exibe as 3 variáveis mais importantes para o modelo.
-    """
-
-    # Acessar os passos do Pipeline
-    # 'preprocess' é o nome do ColumnTransformer e 'clf' é o classificador
-    preprocessor = model.named_steps['preprocess']
-    classifier = model.named_steps['clf']
-
-    # Obter os nomes das features transformadas (OneHot + Numéricas)
-    feature_names = preprocessor.get_feature_names_out()
-    
-    # Obter os valores de importância
-    importances = classifier.feature_importances_
-
-    # Criar um DataFrame para organizar
-    df_imp = pd.DataFrame({'feature': feature_names, 'importance': importances})
-    df_imp = df_imp.sort_values('importance', ascending=False).head(3)
-
-    # Dicionário para traduzir os nomes técnicos ("feature names") para Português legível
-    dicionario_traducao = {
-        'num__imc': 'Índice de Massa Corporal (IMC)',
-        'num__idade': 'Idade',
-        'bin__b_historico_familiar': 'Histórico Familiar',
-        'bin__genero': 'Gênero',
-        'bin__b_come_alimentos_caloricos': 'Consumo de Calóricos',
-        'bin__b_fuma': 'Hábito de Fumar',
-        'bin__b_monitora_calorias': 'Monitoramento de Calorias',
-        'cat__freq_come_fora_refeicao_Frequently': 'Comer entre refeições (Frequentemente)',
-        'cat__freq_come_fora_refeicao_Sometimes': 'Comer entre refeições (Às vezes)',
-        'cat__freq_come_fora_refeicao_Always': 'Comer entre refeições (Sempre)',
-        'cat__qtd_atv_fisicas_Sedentario': 'Sedentarismo',
-        'cat__qtd_atv_fisicas_Baixa_frequencia': 'Baixa Atividade Física',
-        'cat__qtd_atv_fisicas_Moderada_frequencia': 'Atividade Física Moderada',
-        'cat__qtd_agua_Baixo_consumo': 'Baixo consumo de água',
-        'cat__meio_de_transporte_Automobile': 'Uso de Carro',
-        'cat__meio_de_transporte_Public_Transportation': 'Transporte Público'
-    }
-
-    # Função para limpar o nome
-    def limpar_nome(nome_tecnico):
-        if nome_tecnico in dicionario_traducao:
-            return dicionario_traducao[nome_tecnico]
-        
-        nome_limpo = nome_tecnico.replace('num__', '').replace('cat__', '').replace('bin__', '')
-        return nome_limpo.replace('_', ' ').title()
-
-    # Aplicar a tradução
-    df_imp['nome_exibicao'] = df_imp['feature'].apply(limpar_nome)
-
-    # Exibição no Streamlit
-    st.markdown("### 📊 Fatores de Maior Peso")
-    st.markdown("As 3 principais variáveis que o modelo considerou para esta análise global:")
-
-    for i, row in df_imp.iterrows():
-        st.write(f"**{row['nome_exibicao']}**")
-        st.progress(int(row['importance'] * 100))
-        st.caption(f"Impacto no modelo: {row['importance']*100:.1f}%")
-
-# Função princial
+# Função principal
 def main():
-    # 1. Configura a Barra Lateral
+    
+    # Chamar funçaõ do sidebar
     configurar_sidebar()
-
-    # 2. Carrega o Modelo
-    model = load_model()
-
-    # 3. Corpo Principal
-    st.title("🩺 Análise de Risco de Obesidade")
-    st.markdown("""
-    Preencha o formulário abaixo com os dados do paciente.
-    O sistema utilizará Inteligência Artificial para calcular a probabilidade de risco de obesidade.
-    """)
+    
+    # Carregar Modelo e Configs
+    model, config = load_models_and_config()
+    
+    # Titulo e subtitulo
+    st.title("🎓 Previsão de Defasagem Educacional")
+    st.markdown("Analise o risco do aluno apresentar defasagem educacional (IAN <= 5) com base em seus indicadores.")
+    
+    if config:
+        st.caption(f"🤖 Modelo Ativo: **{config['best_model']}** | 🎚️ Limite (Threshold) de Corte: **{config['threshold']:.2f}**")
+    
     st.markdown("---")
 
-    # 4. Formulário
-    input_df = get_user_input_features()
+    # Input bruto
+    raw_input_df = get_user_input_features()
 
-    # 5. Botão e Predição
     st.markdown("###")
     
+    # Realizar a predição
     if st.button("🔍 Realizar Predição", type="primary", use_container_width=True):
-        if model is not None:
-            try:
-                prediction = model.predict(input_df)
-                probability = model.predict_proba(input_df)
+        if model is not None and config is not None:
+            with st.spinner('Analisando dados...'):
+                try:
+                    # Aplicar o pré-processamento
+                    processed_df = preparar_base_app(raw_input_df)
 
-                st.markdown("---")
-                st.header("Resultado da Análise")
-
-                if prediction[0] == 1:
-                    st.error("⚠️ **ALTO RISCO DE OBESIDADE IDENTIFICADO**")
-                    st.metric(label="Probabilidade de Risco", value=f"{probability[0][1] * 100:.1f}%")
-                    st.warning("👉 **Recomendação:** Sugere-se encaminhamento para orientação médica e nutricional especializada.")
-                else:
-                    st.success("✅ **BAIXO RISCO IMEDIATO**")
-                    st.metric(label="Probabilidade de Risco", value=f"{probability[0][1] * 100:.1f}%")
-                    st.info("👉 **Recomendação:** Continue mantendo hábitos saudáveis e acompanhamento regular.")
-                
-                # Exibição do SHAP
-                st.markdown("---")
-                st.header("Fatores de Influência (Explicabilidade)")
-                st.write("Entenda quais fatores específicos deste paciente **aumentaram (Vermelho)** ou **diminuíram (Azul)** o risco.")
-                
-                with st.spinner("Calculando impactos detalhados..."):
-                    fig_shap, df_map = gerar_explicacao_shap(model, input_df)
-                    st.pyplot(fig_shap)
+                    # Salvar probabilidades
+                    probability = model.predict_proba(processed_df)
+                    proba_risco = probability[0][1]
                     
-                    st.markdown("""
-                    **Legenda do Gráfico:**  
-                    - **Eixo X:** Probabilidade de Risco.  
-                    - **Barras Vermelhas:** Fatores que "empurram" o risco para cima.  
-                    - **Barras Azuis:** Fatores que "seguram" o risco para baixo.  
-                    """)
-
-                # Validar SHAP
-                if validar_shap.lower() == 's':
-
+                    # Usar o Threshold do config para decidir
+                    limiar = config['threshold']
+                    
                     st.markdown("---")
-                    st.header("🕵️‍♀️ Debug: Ver Mapeamento Técnico das Variáveis")
-                    st.write("Verifique abaixo como cada variável técnica foi traduzida para o gráfico. Útil para encontrar duplicidades.")
+                    st.header("Resultado da Análise")
 
-                    with st.expander("Clique aqui para ver"):
-                        st.dataframe(
-                            df_map.sort_values(by='Nome Técnico (Raw)'), 
-                            width='stretch',
-                            hide_index=True
-                        )
+                    if proba_risco >= limiar:
+                        st.error("⚠️ **ALTO RISCO DE DEFASAGEM IDENTIFICADO**")
+                        st.metric(label="Probabilidade de Risco", value=f"{proba_risco * 100:.1f}%")
+                        st.warning("👉 **Recomendação:** Necessário acompanhamento pedagógico e psicossocial intensificado.")
 
-                # Exibição as principiais variaveis
-                #st.markdown("---")
-                #exibir_importancia_variaveis(model)
-            
-            except Exception as e:
-                st.error(f"Ocorreu um erro técnico ao realizar a predição: {e}")
+                    else:
+                        st.success("✅ **ALUNO NO CAMINHO CERTO (BAIXO RISCO)**")
+                        st.metric(label="Probabilidade de Risco", value=f"{proba_risco * 100:.1f}%")
+                        st.info("👉 **Recomendação:** Manter acompanhamento padrão para garantir o engajamento.")
+                    
+                    # 4. Exibição do SHAP
+                    st.markdown("---")
+                    st.header("Fatores de Influência (Explicabilidade)")
+                    st.write("Entenda quais características mais impactaram esta previsão específica.")
+                    
+                    fig_shap, df_map = gerar_explicacao_shap(model, processed_df)
+                    if fig_shap:
+                        st.pyplot(fig_shap)
+                        
+                        st.markdown("""
+                        **Legenda:** - **Eixo X:** Pontuação base / Probabilidade.  
+                        - **Barras Vermelhas:** Fatores que **aumentam** o risco de defasagem.  
+                        - **Barras Azuis:** Fatores que **diminuem** o risco de defasagem.  
+                        """)
+
+                    # Usar para mapear o shap
+                    if validar_shap.lower() == 's' and df_map is not None:
+                        st.markdown("---")
+                        st.header("🕵️‍♀️ Debug: Variáveis")
+                        with st.expander("Ver Mapeamento"):
+                            st.dataframe(df_map)
+
+                except Exception as e:
+                    st.error(f"Ocorreu um erro técnico ao realizar a predição: {e}")
+
         else:
-            st.error("⚠️ O modelo de Inteligência Artificial não foi carregado corretamente. Verifique os arquivos.")
-            
+            st.error("⚠️ O modelo não foi carregado corretamente.")
+
 if __name__ == "__main__":
     main()
