@@ -1,4 +1,3 @@
-import os
 import re
 import joblib
 import shap
@@ -14,7 +13,7 @@ st.set_page_config(
 )
 
 # =========================================================
-# TRATAMENTO DE DADOS
+# FUNÇÕES DE TRATAMENTO
 # =========================================================
 
 def extrair_fase(valor):
@@ -53,12 +52,12 @@ def preparar_base(df):
 
 
 # =========================================================
-# PROTEÇÃO DE COLUNAS
+# GARANTIR COLUNAS
 # =========================================================
 
 def garantir_colunas(df):
 
-    cols = [
+    colunas = [
         "iaa","ieg","ips","ipp",
         "inde_2022","inde_2023",
         "ida","ipv","n_av",
@@ -66,23 +65,34 @@ def garantir_colunas(df):
         "delta_inde"
     ]
 
-    for c in cols:
+    for c in colunas:
+
         if c not in df.columns:
             df[c] = np.nan
 
     return df
 
 
-def alinhar_colunas(df, config):
+# =========================================================
+# ALINHAR COM MODELO
+# =========================================================
 
-    ordem = config["features_modelo"]
+def alinhar_colunas(df, model):
 
-    for c in ordem:
+    try:
 
-        if c not in df.columns:
-            df[c] = np.nan
+        ordem = model.feature_names_in_
 
-    return df[ordem]
+        for c in ordem:
+
+            if c not in df.columns:
+                df[c] = np.nan
+
+        return df[ordem]
+
+    except:
+
+        return df
 
 
 # =========================================================
@@ -94,9 +104,7 @@ def carregar_modelo():
 
     modelo = joblib.load("Modelos/modelo_passos_magicos.joblib")
 
-    config = joblib.load("Modelos/config_passos_magicos.joblib")
-
-    return modelo, config
+    return modelo
 
 
 # =========================================================
@@ -129,7 +137,7 @@ def grafico_shap(model, df):
 
 
 # =========================================================
-# INTERPRETAÇÃO AUTOMÁTICA
+# INTERPRETAÇÃO DE RISCO
 # =========================================================
 
 def interpretar_risco(prob):
@@ -138,9 +146,9 @@ def interpretar_risco(prob):
         return "🟢 Baixo risco", "Aluno apresenta trajetória educacional estável."
 
     if prob < 0.60:
-        return "🟡 Atenção", "Aluno pode apresentar dificuldades futuras. Monitoramento recomendado."
+        return "🟡 Atenção", "Aluno pode apresentar dificuldades futuras."
 
-    return "🔴 Alto risco", "Aluno com forte probabilidade de defasagem. Intervenção pedagógica recomendada."
+    return "🔴 Alto risco", "Aluno com forte probabilidade de defasagem. Intervenção recomendada."
 
 
 # =========================================================
@@ -161,7 +169,7 @@ def grafico_risco(prob):
 
 
 # =========================================================
-# INPUT USUÁRIO
+# INPUTS
 # =========================================================
 
 def inputs_usuario():
@@ -231,11 +239,11 @@ def main():
     st.title("🎓 Plataforma de Análise de Risco Educacional")
 
     st.write(
-        "Sistema de apoio pedagógico para identificação de alunos "
-        "com risco de defasagem escolar."
+        "Sistema de apoio pedagógico para identificação "
+        "de alunos com risco de defasagem escolar."
     )
 
-    model, config = carregar_modelo()
+    model = carregar_modelo()
 
     df = inputs_usuario()
 
@@ -245,7 +253,7 @@ def main():
 
         df = garantir_colunas(df)
 
-        df = alinhar_colunas(df, config)
+        df = alinhar_colunas(df, model)
 
         prob = model.predict_proba(df)[0][1]
 
@@ -277,4 +285,5 @@ def main():
 
 
 if __name__ == "__main__":
+
     main()
