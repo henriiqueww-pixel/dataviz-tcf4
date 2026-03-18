@@ -17,12 +17,10 @@ st.set_page_config(page_title="Plataforma de Risco Educacional", layout="wide")
 def localizar_modelo():
 
     caminhos = [
-        "modelo_passos_magicos.pkl",
+       
         "modelo_passos_magicos.joblib",
-        "Modelos/modelo_passos_magicos.pkl",
         "Modelos/modelo_passos_magicos.joblib",
-        "data/modelo_passos_magicos.pkl",
-        "data/modelo_passos_magicos.joblib"
+       
     ]
 
     for caminho in caminhos:
