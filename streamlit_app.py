@@ -15,28 +15,29 @@ st.set_page_config(
 )
 
 # ================================
-# CARREGAR MODELO
+# CARREGAR MODELO (.JOBLIB)
 # ================================
 
 @st.cache_resource
 def carregar_modelo():
 
-    caminhos = [
-        "modelo_passos_magicos.pkl",
-        "modelo_passos_magicos.joblib",
-        "./modelo_passos_magicos.pkl",
-        "./modelo_passos_magicos.joblib"
-    ]
+    caminho_modelo = "modelo_passos_magicos.joblib"
 
-    for caminho in caminhos:
+    if not os.path.exists(caminho_modelo):
 
-        if os.path.exists(caminho):
+        st.error(
+            "❌ Arquivo modelo_passos_magicos.joblib não encontrado no repositório."
+        )
 
-            modelo = joblib.load(caminho)
-            return modelo
+        st.info(
+            "Coloque o arquivo modelo_passos_magicos.joblib na mesma pasta do streamlit_app.py"
+        )
 
-    st.error("❌ Modelo não encontrado. Verifique se o arquivo modelo_passos_magicos.pkl está no repositório.")
-    st.stop()
+        st.stop()
+
+    modelo = joblib.load(caminho_modelo)
+
+    return modelo
 
 
 # ================================
@@ -151,9 +152,13 @@ def explicar_modelo(model, df):
             modelo_final = steps[-1]
 
             try:
+
                 transformador = steps[0]
+
                 X_trans = transformador.transform(df)
+
             except:
+
                 X_trans = df
 
         else:
