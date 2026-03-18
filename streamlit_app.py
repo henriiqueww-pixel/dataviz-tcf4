@@ -109,14 +109,14 @@ def garantir_colunas_modelo(df, model):
 
 
 # ---------------------------------------------------
-# SHAP CORRIGIDO
+# SHAP CORRIGIDO DEFINITIVO
 # ---------------------------------------------------
 
 def grafico_shap(model, df):
 
     try:
 
-        # verificar se é pipeline
+        # identificar pipeline
         if hasattr(model, "named_steps"):
 
             prep = None
@@ -135,11 +135,8 @@ def grafico_shap(model, df):
                 X = prep.transform(df)
 
                 try:
-
                     nomes = prep.get_feature_names_out()
-
                 except:
-
                     nomes = [f"feature_{i}" for i in range(X.shape[1])]
 
                 X = pd.DataFrame(X, columns=nomes)
@@ -154,17 +151,15 @@ def grafico_shap(model, df):
             X = df.copy()
 
         # criar explainer
-        try:
-
-            explainer = shap.TreeExplainer(modelo_final)
-
-        except:
-
-            explainer = shap.Explainer(modelo_final, X)
+        explainer = shap.Explainer(modelo_final)
 
         shap_values = explainer(X)
 
-        explicacao = shap_values[0]
+        # selecionar apenas classe positiva
+        if len(shap_values.shape) == 3:
+            explicacao = shap_values[0, :, 1]
+        else:
+            explicacao = shap_values[0]
 
         fig = plt.figure()
 
