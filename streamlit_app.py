@@ -17,10 +17,8 @@ st.set_page_config(page_title="Plataforma de Risco Educacional", layout="wide")
 def localizar_modelo():
 
     caminhos = [
-       
         "modelo_passos_magicos.joblib",
         "Modelos/modelo_passos_magicos.joblib",
-       
     ]
 
     for caminho in caminhos:
@@ -110,42 +108,46 @@ def garantir_colunas_modelo(df, model):
 
 
 # ---------------------------------------------------
-# SHAP
+# SHAP (CORRIGIDO)
 # ---------------------------------------------------
-
-@st.cache_resource
-def shap_explainer(_model):
-
-    try:
-        modelo = _model.named_steps["model"]
-    except:
-        modelo = _model
-
-    return shap.TreeExplainer(modelo)
-
 
 def grafico_shap(model, df):
 
     try:
 
-        if "prep" in model.named_steps:
-            X = model.named_steps["prep"].transform(df)
+        # detectar pipeline
+        if hasattr(model, "named_steps"):
+
+            steps = model.named_steps
+
+            if "prep" in steps:
+                X = steps["prep"].transform(df)
+            else:
+                X = df
+
+            if "model" in steps:
+                modelo_final = steps["model"]
+            else:
+                modelo_final = list(steps.values())[-1]
+
         else:
+
+            modelo_final = model
             X = df
 
-        explainer = shap_explainer(model)
+        explainer = shap.TreeExplainer(modelo_final)
 
         shap_values = explainer(X)
 
-        values = shap_values.values[0]
+        explicacao = shap_values[0]
 
         fig = plt.figure()
 
-        shap.plots.waterfall(values, show=False)
+        shap.plots.waterfall(explicacao, show=False)
 
         return fig
 
-    except:
+    except Exception:
 
         fig = plt.figure()
 
