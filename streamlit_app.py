@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import joblib
+import os
 
 # ================================
 # CONFIGURAÇÃO DA PÁGINA
@@ -19,8 +20,23 @@ st.set_page_config(
 
 @st.cache_resource
 def carregar_modelo():
-    model = joblib.load("modelo_passos_magicos.pkl")
-    return model
+
+    caminhos = [
+        "modelo_passos_magicos.pkl",
+        "modelo_passos_magicos.joblib",
+        "./modelo_passos_magicos.pkl",
+        "./modelo_passos_magicos.joblib"
+    ]
+
+    for caminho in caminhos:
+
+        if os.path.exists(caminho):
+
+            modelo = joblib.load(caminho)
+            return modelo
+
+    st.error("❌ Modelo não encontrado. Verifique se o arquivo modelo_passos_magicos.pkl está no repositório.")
+    st.stop()
 
 
 # ================================
@@ -62,13 +78,11 @@ def input_usuario():
     )
 
     dados = {
-
         "idade": idade,
         "nota_portugues": nota_portugues,
         "nota_matematica": nota_matematica,
         "frequencia": frequencia,
         "horas_estudo": horas_estudo
-
     }
 
     df = pd.DataFrame([dados])
@@ -106,13 +120,14 @@ def prever(model, df):
 
     prob = model.predict_proba(df)[0][1]
 
-    risco = "Baixo"
-
     if prob > 0.7:
         risco = "Alto"
 
     elif prob > 0.4:
         risco = "Moderado"
+
+    else:
+        risco = "Baixo"
 
     return prob, risco
 
@@ -129,7 +144,6 @@ def explicar_modelo(model, df):
 
         st.subheader("🔎 Explicação do Modelo")
 
-        # verificar se modelo é pipeline
         if hasattr(model, "named_steps"):
 
             steps = list(model.named_steps.values())
@@ -137,13 +151,9 @@ def explicar_modelo(model, df):
             modelo_final = steps[-1]
 
             try:
-
                 transformador = steps[0]
-
                 X_trans = transformador.transform(df)
-
             except:
-
                 X_trans = df
 
         else:
@@ -164,10 +174,8 @@ def explicar_modelo(model, df):
             valores = shap_values[0]
 
         importancia = pd.DataFrame({
-
             "variavel": df.columns,
             "impacto": valores[:len(df.columns)]
-
         })
 
         importancia["impacto_abs"] = importancia["impacto"].abs()
