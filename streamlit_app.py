@@ -11,14 +11,14 @@ st.set_page_config(page_title="Plataforma de Risco Educacional", layout="wide")
 
 
 # ---------------------------------------------------
-# LOCALIZAR ARQUIVO DO MODELO
+# LOCALIZAR MODELO
 # ---------------------------------------------------
 
 def localizar_modelo():
 
     caminhos = [
         "modelo_passos_magicos.joblib",
-        "Modelos/modelo_passos_magicos.joblib",
+        "Modelos/modelo_passos_magicos.joblib"
     ]
 
     for caminho in caminhos:
@@ -26,13 +26,11 @@ def localizar_modelo():
         if Path(caminho).exists():
             return caminho
 
-    raise FileNotFoundError(
-        "Arquivo do modelo não encontrado no repositório."
-    )
+    raise FileNotFoundError("Arquivo modelo_passos_magicos.joblib não encontrado.")
 
 
 # ---------------------------------------------------
-# CARREGAR MODELO COM JOBLIB
+# CARREGAR MODELO
 # ---------------------------------------------------
 
 @st.cache_resource
@@ -93,49 +91,76 @@ def preparar_base(df):
 def garantir_colunas_modelo(df, model):
 
     try:
-        colunas_modelo = list(model.feature_names_in_)
+
+        colunas = list(model.feature_names_in_)
+
+        for c in colunas:
+
+            if c not in df.columns:
+                df[c] = np.nan
+
+        df = df[colunas]
+
     except:
-        return df
 
-    for c in colunas_modelo:
-
-        if c not in df.columns:
-            df[c] = np.nan
-
-    df = df[colunas_modelo]
+        pass
 
     return df
 
 
 # ---------------------------------------------------
-# SHAP (CORRIGIDO)
+# SHAP CORRIGIDO
 # ---------------------------------------------------
 
 def grafico_shap(model, df):
 
     try:
 
-        # detectar pipeline
+        # verificar se é pipeline
         if hasattr(model, "named_steps"):
 
-            steps = model.named_steps
+            prep = None
+            modelo_final = None
 
-            if "prep" in steps:
-                X = steps["prep"].transform(df)
-            else:
-                X = df
+            for nome, step in model.named_steps.items():
 
-            if "model" in steps:
-                modelo_final = steps["model"]
+                if hasattr(step, "transform"):
+                    prep = step
+
+                if hasattr(step, "predict"):
+                    modelo_final = step
+
+            if prep is not None:
+
+                X = prep.transform(df)
+
+                try:
+
+                    nomes = prep.get_feature_names_out()
+
+                except:
+
+                    nomes = [f"feature_{i}" for i in range(X.shape[1])]
+
+                X = pd.DataFrame(X, columns=nomes)
+
             else:
-                modelo_final = list(steps.values())[-1]
+
+                X = df.copy()
 
         else:
 
             modelo_final = model
-            X = df
+            X = df.copy()
 
-        explainer = shap.TreeExplainer(modelo_final)
+        # criar explainer
+        try:
+
+            explainer = shap.TreeExplainer(modelo_final)
+
+        except:
+
+            explainer = shap.Explainer(modelo_final, X)
 
         shap_values = explainer(X)
 
@@ -147,14 +172,14 @@ def grafico_shap(model, df):
 
         return fig
 
-    except Exception:
+    except Exception as erro:
 
         fig = plt.figure()
 
         plt.text(
             0.5,
             0.5,
-            "Explicação SHAP não disponível",
+            f"Erro SHAP: {erro}",
             ha="center"
         )
 
@@ -164,7 +189,7 @@ def grafico_shap(model, df):
 
 
 # ---------------------------------------------------
-# INTERPRETAÇÃO DO RISCO
+# INTERPRETAÇÃO
 # ---------------------------------------------------
 
 def interpretar_risco(prob):
@@ -179,7 +204,7 @@ def interpretar_risco(prob):
 
 
 # ---------------------------------------------------
-# TERMÔMETRO DE RISCO
+# GRÁFICO DE RISCO
 # ---------------------------------------------------
 
 def grafico_risco(prob):
@@ -196,7 +221,7 @@ def grafico_risco(prob):
 
 
 # ---------------------------------------------------
-# INPUT DO USUÁRIO
+# INPUT USUÁRIO
 # ---------------------------------------------------
 
 def input_usuario():
