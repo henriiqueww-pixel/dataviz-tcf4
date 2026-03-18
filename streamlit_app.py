@@ -1,305 +1,237 @@
-import re
-import joblib
-import shap
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
 import streamlit as st
-from pathlib import Path
+import pandas as pd
+import numpy as np
+import joblib
 
-st.set_page_config(page_title="Plataforma de Risco Educacional", layout="wide")
+# ================================
+# CONFIGURAÇÃO DA PÁGINA
+# ================================
 
+st.set_page_config(
+    page_title="Risco Educacional",
+    page_icon="🎓",
+    layout="wide"
+)
 
-# ---------------------------------------------------
-# LOCALIZAR ARQUIVO DO MODELO
-# ---------------------------------------------------
-
-def localizar_modelo():
-
-    caminhos = [
-        "modelo_passos_magicos.pkl",
-        "modelo_passos_magicos.joblib",
-        "Modelos/modelo_passos_magicos.pkl",
-        "Modelos/modelo_passos_magicos.joblib",
-        "data/modelo_passos_magicos.pkl",
-        "data/modelo_passos_magicos.joblib"
-    ]
-
-    for caminho in caminhos:
-
-        if Path(caminho).exists():
-            return caminho
-
-    raise FileNotFoundError(
-        "Arquivo do modelo não encontrado no repositório."
-    )
-
-
-# ---------------------------------------------------
-# CARREGAR MODELO COM JOBLIB
-# ---------------------------------------------------
+# ================================
+# CARREGAR MODELO
+# ================================
 
 @st.cache_resource
 def carregar_modelo():
+    model = joblib.load("modelo_passos_magicos.pkl")
+    return model
 
-    caminho = localizar_modelo()
 
-    modelo = joblib.load(caminho)
-
-    return modelo
-
-
-# ---------------------------------------------------
-# EXTRAIR FASE
-# ---------------------------------------------------
-
-def extrair_fase(valor):
-
-    if pd.isna(valor):
-        return np.nan
-
-    valor = str(valor).lower()
-
-    if "alfa" in valor:
-        return 0
-
-    m = re.search(r"\d+", valor)
-
-    if m:
-        return int(m.group())
-
-    return np.nan
-
-
-# ---------------------------------------------------
-# PREPARAÇÃO DOS DADOS
-# ---------------------------------------------------
-
-def preparar_base(df):
-
-    df = df.copy()
-
-    df["fase_ideal"] = df["fase_ideal"].apply(extrair_fase)
-
-    df["media_academica"] = df[["mat", "por", "ing"]].mean(axis=1)
-
-    df["media_comportamental"] = df[["iaa", "ieg", "ips", "ipp"]].mean(axis=1)
-
-    df["delta_inde"] = df["inde_2023"] - df["inde_2022"]
-
-    return df
-
-
-# ---------------------------------------------------
-# GARANTIR COLUNAS DO MODELO
-# ---------------------------------------------------
-
-def garantir_colunas_modelo(df, model):
-
-    try:
-        colunas_modelo = list(model.feature_names_in_)
-    except:
-        return df
-
-    for c in colunas_modelo:
-
-        if c not in df.columns:
-            df[c] = np.nan
-
-    df = df[colunas_modelo]
-
-    return df
-
-
-# ---------------------------------------------------
-# SHAP
-# ---------------------------------------------------
-
-@st.cache_resource
-def shap_explainer(_model):
-
-    try:
-        modelo = _model.named_steps["model"]
-    except:
-        modelo = _model
-
-    return shap.TreeExplainer(modelo)
-
-
-def grafico_shap(model, df):
-
-    try:
-
-        if "prep" in model.named_steps:
-            X = model.named_steps["prep"].transform(df)
-        else:
-            X = df
-
-        explainer = shap_explainer(model)
-
-        shap_values = explainer(X)
-
-        values = shap_values.values[0]
-
-        fig = plt.figure()
-
-        shap.plots.waterfall(values, show=False)
-
-        return fig
-
-    except:
-
-        fig = plt.figure()
-
-        plt.text(
-            0.5,
-            0.5,
-            "Explicação SHAP não disponível",
-            ha="center"
-        )
-
-        plt.axis("off")
-
-        return fig
-
-
-# ---------------------------------------------------
-# INTERPRETAÇÃO DO RISCO
-# ---------------------------------------------------
-
-def interpretar_risco(prob):
-
-    if prob < 0.30:
-        return "🟢 Baixo risco", "Aluno apresenta trajetória educacional estável."
-
-    if prob < 0.60:
-        return "🟡 Atenção", "Aluno pode apresentar dificuldades educacionais."
-
-    return "🔴 Alto risco", "Aluno com forte probabilidade de defasagem."
-
-
-# ---------------------------------------------------
-# TERMÔMETRO DE RISCO
-# ---------------------------------------------------
-
-def grafico_risco(prob):
-
-    fig = plt.figure()
-
-    plt.barh(["Risco"], [prob])
-
-    plt.xlim(0, 1)
-
-    plt.xlabel("Probabilidade")
-
-    return fig
-
-
-# ---------------------------------------------------
+# ================================
 # INPUT DO USUÁRIO
-# ---------------------------------------------------
+# ================================
 
 def input_usuario():
 
-    st.sidebar.header("Dados do aluno")
+    st.sidebar.header("Dados do Aluno")
 
-    idade = st.sidebar.number_input("Idade", 6, 20, 12)
+    idade = st.sidebar.number_input("Idade", 10, 25, 15)
 
-    genero = st.sidebar.selectbox("Gênero", ["menino", "menina"])
-
-    fase = st.sidebar.selectbox(
-        "Fase",
-        ["Alfa", "Fase 1", "Fase 2", "Fase 3", "Fase 4", "Fase 5"]
+    nota_portugues = st.sidebar.slider(
+        "Nota Português",
+        0.0,
+        10.0,
+        6.0
     )
 
-    mat = st.sidebar.slider("Matemática", 0.0, 10.0, 5.0)
-    por = st.sidebar.slider("Português", 0.0, 10.0, 5.0)
-    ing = st.sidebar.slider("Inglês", 0.0, 10.0, 5.0)
+    nota_matematica = st.sidebar.slider(
+        "Nota Matemática",
+        0.0,
+        10.0,
+        6.0
+    )
 
-    iaa = st.sidebar.slider("IAA", 0.0, 10.0, 5.0)
-    ieg = st.sidebar.slider("IEG", 0.0, 10.0, 5.0)
-    ips = st.sidebar.slider("IPS", 0.0, 10.0, 5.0)
-    ipp = st.sidebar.slider("IPP", 0.0, 10.0, 5.0)
+    frequencia = st.sidebar.slider(
+        "Frequência (%)",
+        0,
+        100,
+        75
+    )
 
-    inde_2022 = st.sidebar.slider("INDE 2022", 0.0, 10.0, 5.0)
-    inde_2023 = st.sidebar.slider("INDE 2023", 0.0, 10.0, 5.0)
-
-    ida = st.sidebar.slider("IDA", 0.0, 10.0, 5.0)
-    ipv = st.sidebar.slider("IPV", 0.0, 10.0, 5.0)
-
-    n_av = st.sidebar.number_input("Número de avaliações", 0, 20, 5)
+    horas_estudo = st.sidebar.slider(
+        "Horas de estudo por semana",
+        0,
+        40,
+        10
+    )
 
     dados = {
 
         "idade": idade,
-        "genero": genero,
-        "fase_ideal": fase,
+        "nota_portugues": nota_portugues,
+        "nota_matematica": nota_matematica,
+        "frequencia": frequencia,
+        "horas_estudo": horas_estudo
 
-        "mat": mat,
-        "por": por,
-        "ing": ing,
-
-        "iaa": iaa,
-        "ieg": ieg,
-        "ips": ips,
-        "ipp": ipp,
-
-        "inde_2022": inde_2022,
-        "inde_2023": inde_2023,
-
-        "ida": ida,
-        "ipv": ipv,
-
-        "n_av": n_av
     }
 
-    return pd.DataFrame(dados, index=[0])
+    df = pd.DataFrame([dados])
+
+    return df
 
 
-# ---------------------------------------------------
-# APP
-# ---------------------------------------------------
+# ================================
+# ALINHAR COLUNAS
+# ================================
+
+def alinhar_colunas(df, model):
+
+    try:
+
+        ordem = model.feature_names_in_
+
+        for c in ordem:
+
+            if c not in df.columns:
+                df[c] = np.nan
+
+        return df[ordem]
+
+    except:
+
+        return df
+
+
+# ================================
+# PREVISÃO
+# ================================
+
+def prever(model, df):
+
+    prob = model.predict_proba(df)[0][1]
+
+    risco = "Baixo"
+
+    if prob > 0.7:
+        risco = "Alto"
+
+    elif prob > 0.4:
+        risco = "Moderado"
+
+    return prob, risco
+
+
+# ================================
+# EXPLICAÇÃO SHAP
+# ================================
+
+def explicar_modelo(model, df):
+
+    try:
+
+        import shap
+
+        st.subheader("🔎 Explicação do Modelo")
+
+        # verificar se modelo é pipeline
+        if hasattr(model, "named_steps"):
+
+            steps = list(model.named_steps.values())
+
+            modelo_final = steps[-1]
+
+            try:
+
+                transformador = steps[0]
+
+                X_trans = transformador.transform(df)
+
+            except:
+
+                X_trans = df
+
+        else:
+
+            modelo_final = model
+            X_trans = df
+
+        explainer = shap.TreeExplainer(modelo_final)
+
+        shap_values = explainer.shap_values(X_trans)
+
+        if isinstance(shap_values, list):
+
+            valores = shap_values[1][0]
+
+        else:
+
+            valores = shap_values[0]
+
+        importancia = pd.DataFrame({
+
+            "variavel": df.columns,
+            "impacto": valores[:len(df.columns)]
+
+        })
+
+        importancia["impacto_abs"] = importancia["impacto"].abs()
+
+        importancia = importancia.sort_values(
+            "impacto_abs",
+            ascending=False
+        ).drop(columns="impacto_abs")
+
+        st.dataframe(importancia)
+
+        st.bar_chart(
+            importancia.set_index("variavel")
+        )
+
+    except Exception:
+
+        st.info("⚠️ Explicação SHAP não disponível para este modelo.")
+
+
+# ================================
+# APP PRINCIPAL
+# ================================
 
 def main():
 
     st.title("🎓 Plataforma de Risco Educacional")
 
+    st.write(
+        "Sistema de previsão de risco escolar usando Machine Learning."
+    )
+
     model = carregar_modelo()
 
     df = input_usuario()
 
-    if st.button("Analisar aluno"):
+    df = alinhar_colunas(df, model)
 
-        df = preparar_base(df)
+    st.subheader("📋 Dados Informados")
 
-        df = garantir_colunas_modelo(df, model)
+    st.dataframe(df)
 
-        prob = model.predict_proba(df)[0][1]
+    if st.button("Realizar Previsão"):
 
-        col1, col2 = st.columns(2)
+        prob, risco = prever(model, df)
 
-        with col1:
+        st.subheader("📊 Resultado")
 
-            st.metric("Probabilidade de risco", f"{prob*100:.2f}%")
+        st.metric(
+            "Probabilidade de risco",
+            f"{prob:.2%}"
+        )
 
-            fig = grafico_risco(prob)
+        st.metric(
+            "Classificação",
+            risco
+        )
 
-            st.pyplot(fig)
+        explicar_modelo(model, df)
 
-        with col2:
 
-            status, texto = interpretar_risco(prob)
-
-            st.subheader(status)
-
-            st.write(texto)
-
-        st.subheader("Fatores que influenciaram a decisão")
-
-        fig = grafico_shap(model, df)
-
-        st.pyplot(fig)
-
+# ================================
+# EXECUTAR APP
+# ================================
 
 if __name__ == "__main__":
     main()
