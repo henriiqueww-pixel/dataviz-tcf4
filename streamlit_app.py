@@ -189,11 +189,11 @@ def grafico_shap(model, df):
 
 def interpretar_risco(prob):
 
-    if prob < 0.30:
+    if prob < 0.35:
         return "🟢 Baixo risco", "Aluno apresenta trajetória educacional estável."
 
-    if prob < 0.60:
-        return "🟡 Atenção", "Aluno pode apresentar dificuldades educacionais."
+    #if prob > 0.35:
+        #return "🟡 Atenção", "Aluno pode apresentar dificuldades educacionais."
 
     return "🔴 Alto risco", "Aluno com forte probabilidade de defasagem."
 
